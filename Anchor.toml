@@ -1,0 +1,25 @@
+[toolchain]
+
+[features]
+seeds = false
+skip-lint = false
+
+[programs.localnet]
+solana_token_presale = "6WLFLUKBd91rYSZ4rF4xAw8qDd7UrqFZyAsnakavwMGL"
+
+[programs.devnet]
+solana_token_presale = "6WLFLUKBd91rYSZ4rF4xAw8qDd7UrqFZyAsnakavwMGL"
+
+[programs.mainnet]
+solana_token_presale = "6WLFLUKBd91rYSZ4rF4xAw8qDd7UrqFZyAsnakavwMGL"
+
+[registry]
+url = "https://api.apr.dev"
+
+[provider]
+# cluster = "localnet"
+cluster = "devnet"
+wallet = "/root/.config/solana/id.json"
+
+[scripts]
+test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"
