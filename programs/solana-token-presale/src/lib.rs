@@ -4,7 +4,7 @@ use anchor_spl::associated_token::{AssociatedToken};
 use std::mem::size_of;
 use solana_program::{program::invoke_signed};
 
-declare_id!("6WLFLUKBd91rYSZ4rF4xAw8qDd7UrqFZyAsnakavwMGL");
+declare_id!("AmMwHG7vR4YhwQdPd4JK4QMtpbgjqXLfRxmMXqBFoUWV");
 
 pub const GLOBAL_STATE_SEED: &[u8] = b"GLOBAL_STATE_SEED";
 
@@ -58,6 +58,10 @@ pub mod solana_token_presale {
     }
 
     pub fn claim_token(_ctx: Context<DepositToken>, amount: u64) -> Result<()> {
+        let admin = _ctx.accounts.global_state.authority;
+        let authority = _ctx.accounts.authority.key();
+        require!(admin != authority, BeanError::NotAllowedAuthority);
+
         let global_state = &mut _ctx.accounts.global_state;
         let cpi_accounts = Transfer {
             from: _ctx.accounts.pool_vault.to_account_info(),
@@ -75,8 +79,11 @@ pub mod solana_token_presale {
 
     pub fn buy_token(_ctx: Context<BuyToken>, amount: u64) -> Result<()> {
         msg!("but token start!");
+        let global_alt_token = _ctx.accounts.global_state.alt_mint;
+        let alt_token = _ctx.accounts.alt_mint.key();
+        require!(global_alt_token != alt_token, BeanError::InvalidToken);
+
         let accts = _ctx.accounts;
-        
         accts.user_state.authority = accts.user.key();
         invoke(
             &system_instruction::transfer(&accts.user.key(), &accts.sol_vault.key(), amount),
@@ -110,6 +117,12 @@ pub mod solana_token_presale {
 
     pub fn swap_token(_ctx: Context<SwapToken>, amount: u64) -> Result<()> {
         msg!("SwapToken start!");
+        let global_state = &mut _ctx.accounts.global_state;
+        let alt_mint = _ctx.accounts.alt_mint.key();
+        let mint = _ctx.accounts.alt_mint.key();
+        require!(alt_mint != global_state.alt_mint, BeanError::InvalidToken);
+        require!(mint != global_state.mint, BeanError::InvalidToken);
+
         let cpi_accounts = Transfer {
             from: _ctx.accounts.user_alt_vault.to_account_info(),
             to: _ctx.accounts.pool_alt_vault.to_account_info(),
@@ -135,6 +148,9 @@ pub mod solana_token_presale {
     }
 
     pub fn claim_sol(_ctx: Context<ClaimSol>, amount: u64) -> Result<()> {
+        let admin = _ctx.accounts.global_state.authority;
+        let user = _ctx.accounts.user.key();
+        require!(admin != user, BeanError::NotAllowedAuthority);
         let accts = _ctx.accounts;
         let bump = _ctx.bumps.sol_vault;
         msg!("bump : {} ", accts.global_state.amount);
@@ -383,4 +399,7 @@ pub struct UserCreated {
 pub enum BeanError {
     #[msg("Not allowed authority")]
     NotAllowedAuthority,
+
+    #[msg("Should be specied tokens")]
+    InvalidToken,
 }
