@@ -5,13 +5,13 @@ seeds = false
 skip-lint = false
 
 [programs.localnet]
-solana_token_presale = "AmMwHG7vR4YhwQdPd4JK4QMtpbgjqXLfRxmMXqBFoUWV"
+solana_token_presale = "AZKmBgoHsxQiaYimgciyCXZwf8kmjh8StCkCo9gfHSxr"
 
 [programs.devnet]
-solana_token_presale = "AmMwHG7vR4YhwQdPd4JK4QMtpbgjqXLfRxmMXqBFoUWV"
+solana_token_presale = "AZKmBgoHsxQiaYimgciyCXZwf8kmjh8StCkCo9gfHSxr"
 
 [programs.mainnet]
-solana_token_presale = "AmMwHG7vR4YhwQdPd4JK4QMtpbgjqXLfRxmMXqBFoUWV"
+solana_token_presale = "AZKmBgoHsxQiaYimgciyCXZwf8kmjh8StCkCo9gfHSxr"
 
 [registry]
 url = "https://api.apr.dev"

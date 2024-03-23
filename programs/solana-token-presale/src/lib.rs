@@ -4,7 +4,7 @@ use anchor_spl::associated_token::{AssociatedToken};
 use std::mem::size_of;
 use solana_program::{program::invoke_signed};
 
-declare_id!("AmMwHG7vR4YhwQdPd4JK4QMtpbgjqXLfRxmMXqBFoUWV");
+declare_id!("AZKmBgoHsxQiaYimgciyCXZwf8kmjh8StCkCo9gfHSxr");
 
 pub const GLOBAL_STATE_SEED: &[u8] = b"GLOBAL_STATE_SEED";
 
@@ -60,7 +60,7 @@ pub mod solana_token_presale {
     pub fn claim_token(_ctx: Context<DepositToken>, amount: u64) -> Result<()> {
         let admin = _ctx.accounts.global_state.authority;
         let authority = _ctx.accounts.authority.key();
-        require!(admin != authority, BeanError::NotAllowedAuthority);
+        require_keys_eq!(admin, authority, BeanError::NotAllowedAuthority);
 
         let global_state = &mut _ctx.accounts.global_state;
         let cpi_accounts = Transfer {
@@ -81,7 +81,9 @@ pub mod solana_token_presale {
         msg!("but token start!");
         let global_alt_token = _ctx.accounts.global_state.alt_mint;
         let alt_token = _ctx.accounts.alt_mint.key();
-        require!(global_alt_token != alt_token, BeanError::InvalidToken);
+        msg!("global_alt_token: {}", global_alt_token.to_string());
+        msg!("alt_token: {}", alt_token.to_string());
+        require_keys_eq!(global_alt_token, alt_token, BeanError::InvalidToken);
 
         let accts = _ctx.accounts;
         accts.user_state.authority = accts.user.key();
@@ -119,9 +121,9 @@ pub mod solana_token_presale {
         msg!("SwapToken start!");
         let global_state = &mut _ctx.accounts.global_state;
         let alt_mint = _ctx.accounts.alt_mint.key();
-        let mint = _ctx.accounts.alt_mint.key();
-        require!(alt_mint != global_state.alt_mint, BeanError::InvalidToken);
-        require!(mint != global_state.mint, BeanError::InvalidToken);
+        let mint = _ctx.accounts.mint.key();
+        require_keys_eq!(alt_mint, global_state.alt_mint, BeanError::InvalidToken);
+        require_keys_eq!(mint, global_state.mint, BeanError::InvalidToken);
 
         let cpi_accounts = Transfer {
             from: _ctx.accounts.user_alt_vault.to_account_info(),
@@ -150,7 +152,7 @@ pub mod solana_token_presale {
     pub fn claim_sol(_ctx: Context<ClaimSol>, amount: u64) -> Result<()> {
         let admin = _ctx.accounts.global_state.authority;
         let user = _ctx.accounts.user.key();
-        require!(admin != user, BeanError::NotAllowedAuthority);
+        require_keys_eq!(admin, user, BeanError::NotAllowedAuthority);
         let accts = _ctx.accounts;
         let bump = _ctx.bumps.sol_vault;
         msg!("bump : {} ", accts.global_state.amount);
