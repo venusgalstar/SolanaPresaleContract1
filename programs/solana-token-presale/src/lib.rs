@@ -2,17 +2,17 @@ use anchor_lang::{prelude::*, solana_program};
 use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
 use anchor_spl::associated_token::{AssociatedToken};
 use std::mem::size_of;
+use num_traits::checked_pow;
 use solana_program::{program::invoke_signed};
 
-declare_id!("AZKmBgoHsxQiaYimgciyCXZwf8kmjh8StCkCo9gfHSxr");
+
+declare_id!("FKVLuN7zhKh4xjVv7264SkW6oGKgPzHa8hz7pqK9KwzL");
 
 pub const GLOBAL_STATE_SEED: &[u8] = b"GLOBAL_STATE_SEED";
 
 pub const USER_STATE_SEED: &[u8] = b"USER_STATE_SEED";
 
 pub const SOL_VAULT_SEED: &[u8] = b"SOL_VAULT_SEED";
-
-pub const TOKEN_DECIMAL: u64 = 1000000000;
 
 #[program]
 pub mod solana_token_presale {
@@ -23,6 +23,7 @@ pub mod solana_token_presale {
     pub fn create_global_state(
         _ctx: Context<CreateGlobalState>,
         token_price : u64,
+        token_decimal: u64,
     ) -> Result<()> {
         msg!("CreateGlobalState start!!!");
         let global_state = &mut _ctx.accounts.global_state;
@@ -35,6 +36,7 @@ pub mod solana_token_presale {
         global_state.sol_vault = _ctx.accounts.sol_vault.key();
         global_state.authority = _ctx.accounts.authority.key();
         global_state.token_price = token_price;
+        global_state.token_decimal = token_decimal;
         global_state.amount = 0;
 
         emit!(GlobalStateCreated {
@@ -42,6 +44,16 @@ pub mod solana_token_presale {
             mint: _ctx.accounts.mint.key()
         });
         msg!("CreateGlobalState end!!!");
+        Ok(())
+    }
+    pub fn update_global_state(
+        _ctx: Context<UpdateGlobalState>,
+        token_price : u64,
+        token_decimal: u64,
+    ) -> Result<()> {
+        let global_state = &mut _ctx.accounts.global_state;
+        global_state.token_price = token_price;
+        global_state.token_decimal = token_decimal;
         Ok(())
     }
 
@@ -60,7 +72,7 @@ pub mod solana_token_presale {
     pub fn claim_token(_ctx: Context<DepositToken>, amount: u64) -> Result<()> {
         let admin = _ctx.accounts.global_state.authority;
         let authority = _ctx.accounts.authority.key();
-        require_keys_eq!(admin, authority, BeanError::NotAllowedAuthority);
+        require_keys_eq!(admin, authority, PreSaleError::NotAllowedAuthority);
 
         let global_state = &mut _ctx.accounts.global_state;
         let cpi_accounts = Transfer {
@@ -81,9 +93,7 @@ pub mod solana_token_presale {
         msg!("but token start!");
         let global_alt_token = _ctx.accounts.global_state.alt_mint;
         let alt_token = _ctx.accounts.alt_mint.key();
-        msg!("global_alt_token: {}", global_alt_token.to_string());
-        msg!("alt_token: {}", alt_token.to_string());
-        require_keys_eq!(global_alt_token, alt_token, BeanError::InvalidToken);
+        require_keys_eq!(global_alt_token, alt_token, PreSaleError::InvalidToken);
 
         let accts = _ctx.accounts;
         accts.user_state.authority = accts.user.key();
@@ -99,8 +109,8 @@ pub mod solana_token_presale {
         let global_state = &mut accts.global_state;
         
         let token_price = global_state.token_price;
-        
-        let token_amount = amount.checked_div(token_price).unwrap().checked_mul(TOKEN_DECIMAL).unwrap();
+        let token_decimal_value = checked_pow(10u64, global_state.token_decimal.try_into().unwrap()).unwrap();
+        let token_amount = amount.checked_div(token_price).unwrap().checked_mul(token_decimal_value).unwrap();
         let cpi_accounts = Transfer {
             from: accts.pool_vault.to_account_info(),
             to: accts.user_vault.to_account_info(),
@@ -122,8 +132,8 @@ pub mod solana_token_presale {
         let global_state = &mut _ctx.accounts.global_state;
         let alt_mint = _ctx.accounts.alt_mint.key();
         let mint = _ctx.accounts.mint.key();
-        require_keys_eq!(alt_mint, global_state.alt_mint, BeanError::InvalidToken);
-        require_keys_eq!(mint, global_state.mint, BeanError::InvalidToken);
+        require_keys_eq!(alt_mint, global_state.alt_mint, PreSaleError::InvalidToken);
+        require_keys_eq!(mint, global_state.mint, PreSaleError::InvalidToken);
 
         let cpi_accounts = Transfer {
             from: _ctx.accounts.user_alt_vault.to_account_info(),
@@ -152,10 +162,9 @@ pub mod solana_token_presale {
     pub fn claim_sol(_ctx: Context<ClaimSol>, amount: u64) -> Result<()> {
         let admin = _ctx.accounts.global_state.authority;
         let user = _ctx.accounts.user.key();
-        require_keys_eq!(admin, user, BeanError::NotAllowedAuthority);
+        require_keys_eq!(admin, user, PreSaleError::NotAllowedAuthority);
         let accts = _ctx.accounts;
         let bump = _ctx.bumps.sol_vault;
-        msg!("bump : {} ", accts.global_state.amount);
         invoke_signed(
             &system_instruction::transfer(&accts.sol_vault.key(), &accts.user.key(), amount),
             &[
@@ -310,6 +319,19 @@ pub struct ClaimSol<'info> {
 }
 
 #[derive(Accounts)]
+pub struct UpdateGlobalState<'info> {
+    #[account(
+        mut,
+        seeds = [GLOBAL_STATE_SEED],
+        bump,
+    )]
+    pub global_state: Account<'info, GlobalState>,
+
+    #[account(mut)]
+    pub authority: Signer<'info>,
+}
+
+#[derive(Accounts)]
 pub struct CreateGlobalState<'info> {
     #[account(
         init,
@@ -354,7 +376,7 @@ impl<'info> CreateGlobalState<'info> {
         if self.global_state.is_initialized == 1 {
             require!(
                 self.global_state.authority.eq(&self.authority.key()),
-                BeanError::NotAllowedAuthority
+                PreSaleError::NotAllowedAuthority
             )
         }
         Ok(())
@@ -383,6 +405,7 @@ pub struct GlobalState {
     pub vault: Pubkey,
     pub is_initialized: u8,
     pub token_price: u64,
+    pub token_decimal: u64,
 }
 
 #[event]
@@ -398,7 +421,7 @@ pub struct UserCreated {
     authority: Pubkey,
 }
 #[error_code]
-pub enum BeanError {
+pub enum PreSaleError {
     #[msg("Not allowed authority")]
     NotAllowedAuthority,
 
