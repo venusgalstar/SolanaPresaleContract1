@@ -6,7 +6,7 @@ use num_traits::checked_pow;
 use solana_program::{program::invoke_signed};
 
 
-declare_id!("FKVLuN7zhKh4xjVv7264SkW6oGKgPzHa8hz7pqK9KwzL");
+declare_id!("FGw49f5N9DxEawk37qNEkmyK6DL48oxLsEzp959zBk6a");
 
 pub const GLOBAL_STATE_SEED: &[u8] = b"GLOBAL_STATE_SEED";
 
@@ -16,6 +16,7 @@ pub const SOL_VAULT_SEED: &[u8] = b"SOL_VAULT_SEED";
 
 #[program]
 pub mod solana_token_presale {
+
     use anchor_lang::solana_program::{program::invoke, system_instruction};
 
     use super::*;
@@ -24,6 +25,7 @@ pub mod solana_token_presale {
         _ctx: Context<CreateGlobalState>,
         token_price : u64,
         token_decimal: u64,
+        max_token: u64,
     ) -> Result<()> {
         msg!("CreateGlobalState start!!!");
         let global_state = &mut _ctx.accounts.global_state;
@@ -38,6 +40,7 @@ pub mod solana_token_presale {
         global_state.token_price = token_price;
         global_state.token_decimal = token_decimal;
         global_state.amount = 0;
+        global_state.max_token = max_token;
 
         emit!(GlobalStateCreated {
             global_state: _ctx.accounts.global_state.key(),
@@ -50,10 +53,12 @@ pub mod solana_token_presale {
         _ctx: Context<UpdateGlobalState>,
         token_price : u64,
         token_decimal: u64,
+        new_authority: Pubkey,
     ) -> Result<()> {
         let global_state = &mut _ctx.accounts.global_state;
         global_state.token_price = token_price;
         global_state.token_decimal = token_decimal;
+        global_state.authority = new_authority.key();
         Ok(())
     }
 
@@ -96,7 +101,6 @@ pub mod solana_token_presale {
         require_keys_eq!(global_alt_token, alt_token, PreSaleError::InvalidToken);
 
         let accts = _ctx.accounts;
-        accts.user_state.authority = accts.user.key();
         invoke(
             &system_instruction::transfer(&accts.user.key(), &accts.sol_vault.key(), amount),
             &[
@@ -130,10 +134,19 @@ pub mod solana_token_presale {
     pub fn swap_token(_ctx: Context<SwapToken>, amount: u64) -> Result<()> {
         msg!("SwapToken start!");
         let global_state = &mut _ctx.accounts.global_state;
+        let user_state = &mut _ctx.accounts.user_state;
         let alt_mint = _ctx.accounts.alt_mint.key();
         let mint = _ctx.accounts.mint.key();
         require_keys_eq!(alt_mint, global_state.alt_mint, PreSaleError::InvalidToken);
         require_keys_eq!(mint, global_state.mint, PreSaleError::InvalidToken);
+
+        
+        user_state.authority = _ctx.accounts.authority.key();
+        user_state.amount = user_state.amount
+            .checked_add(amount)
+            .unwrap();
+
+        require!(user_state.amount < global_state.max_token, PreSaleError::InvalidToken);
 
         let cpi_accounts = Transfer {
             from: _ctx.accounts.user_alt_vault.to_account_info(),
@@ -144,7 +157,6 @@ pub mod solana_token_presale {
         let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
         token::transfer(cpi_ctx, amount)?;
 
-        let global_state = &mut _ctx.accounts.global_state;
         let cpi_accounts = Transfer {
             from: _ctx.accounts.pool_vault.to_account_info(),
             to: _ctx.accounts.user_vault.to_account_info(),
@@ -193,14 +205,22 @@ pub struct SwapToken<'info> {
 
     #[account(mut, constraint = pool_alt_vault.owner == global_state.key())]
     pub pool_alt_vault: Box<Account<'info, TokenAccount>>,
+    
+    #[account(
+        init_if_needed,
+        seeds = [USER_STATE_SEED],
+        bump,
+        payer = authority,
+        space = 8 + size_of::<UserAccount>(),
+    )]
+    pub user_state: Account<'info, UserAccount>,
 
     pub alt_mint: Box<Account<'info, Mint>>,
     #[account(
-        init_if_needed, 
+        mut, 
         constraint = user_alt_vault.owner == authority.key(), 
         associated_token::mint=alt_mint,
         associated_token::authority=authority,
-        payer=authority,
     )]
     pub user_alt_vault: Box<Account<'info, TokenAccount>>,
 
@@ -242,15 +262,6 @@ pub struct BuyToken<'info> {
     )]
     /// CHECK: this should be set by admin
     pub sol_vault: AccountInfo<'info>,
-    
-    #[account(
-        init_if_needed,
-        seeds = [global_state.key().as_ref(), user.key().as_ref()],
-        bump,
-        payer = user,
-        space = 8 + size_of::<UserAccount>(),
-    )]
-    pub user_state: Account<'info, UserAccount>,
 
     #[account(mut, constraint = pool_vault.owner == global_state.key())]
     pub pool_vault: Box<Account<'info, TokenAccount>>,
@@ -342,6 +353,11 @@ pub struct CreateGlobalState<'info> {
     )]
     pub global_state: Account<'info, GlobalState>,
 
+    #[account(
+        mut,
+        seeds = [SOL_VAULT_SEED],
+        bump
+    )]
     /// CHECK: this should be set by admin
     pub sol_vault: AccountInfo<'info>,
 
@@ -406,6 +422,7 @@ pub struct GlobalState {
     pub is_initialized: u8,
     pub token_price: u64,
     pub token_decimal: u64,
+    pub max_token: u64,
 }
 
 #[event]
