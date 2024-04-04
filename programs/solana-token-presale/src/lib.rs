@@ -6,7 +6,7 @@ use num_traits::checked_pow;
 use solana_program::{program::invoke_signed};
 
 
-declare_id!("FGw49f5N9DxEawk37qNEkmyK6DL48oxLsEzp959zBk6a");
+declare_id!("4vyDPAc29wpYjc9uNrp2hgoaxCxW1BmpqVkLK4LALcu3");
 
 pub const GLOBAL_STATE_SEED: &[u8] = b"GLOBAL_STATE_SEED";
 
@@ -53,12 +53,14 @@ pub mod solana_token_presale {
         _ctx: Context<UpdateGlobalState>,
         token_price : u64,
         token_decimal: u64,
+        max_token: u64,
         new_authority: Pubkey,
     ) -> Result<()> {
         let global_state = &mut _ctx.accounts.global_state;
         global_state.token_price = token_price;
         global_state.token_decimal = token_decimal;
         global_state.authority = new_authority.key();
+        global_state.max_token = max_token;
         Ok(())
     }
 
@@ -146,6 +148,9 @@ pub mod solana_token_presale {
             .checked_add(amount)
             .unwrap();
 
+        msg!("user amount {}", user_state.amount);
+        msg!("global_state amount {}", global_state.max_token);
+
         require!(user_state.amount < global_state.max_token, PreSaleError::InvalidToken);
 
         let cpi_accounts = Transfer {
@@ -195,6 +200,7 @@ pub mod solana_token_presale {
 #[derive(Accounts)]
 pub struct SwapToken<'info> {
     #[account(
+        mut,
         seeds = [GLOBAL_STATE_SEED], 
         bump,
     )]
@@ -208,7 +214,7 @@ pub struct SwapToken<'info> {
     
     #[account(
         init_if_needed,
-        seeds = [USER_STATE_SEED],
+        seeds = [authority.key().as_ref(), USER_STATE_SEED],
         bump,
         payer = authority,
         space = 8 + size_of::<UserAccount>(),
@@ -289,6 +295,7 @@ pub struct DepositToken<'info> {
     #[account(
         seeds = [GLOBAL_STATE_SEED],
         bump,
+        has_one = authority,
     )]
     pub global_state: Account<'info, GlobalState>,
 
@@ -335,6 +342,7 @@ pub struct UpdateGlobalState<'info> {
         mut,
         seeds = [GLOBAL_STATE_SEED],
         bump,
+        has_one = authority
     )]
     pub global_state: Account<'info, GlobalState>,
 
